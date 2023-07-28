@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify
 import json
 import pandas as pd
-import numpy as np
 from statsmodels.tsa.arima.model import ARIMA
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -10,20 +10,14 @@ app = Flask(__name__)
 def load_sales_data():
     with open("sales_history_dataset.json", "r") as json_file:
         sales_data = json.load(json_file)
-
-    # Convert the timestamp in the format "YYYY-Month" to "YYYY-Mon" (e.g., "2012-Jan")
-    for year in sales_data:
-        for month_name in list(sales_data[year].keys()):
-            month_abbr = month_name[:3]  # Get the first 3 characters to create the abbreviated month name
-            sales_data[year][month_abbr] = sales_data[year].pop(month_name)
-
     return sales_data
 
-
 # Function to get sales data for a specific product, category, brand, and month
-def get_sales_data(sales_data, product_name, category, brand, month_name):
-    df = pd.DataFrame(sales_data)
-    filtered_df = df[(df["product"] == product_name) & (df["category"] == category) & (df["brand"] == brand) & (df["month"] == month_name)]
+def get_sales_data(sales_data, product_name, category, brand, month):
+    data = sales_data.get(month, [])
+    print("Data for month:", month, "-", data)  # Debug print
+    df = pd.DataFrame(data)
+    filtered_df = df[(df["product"] == product_name) & (df["category"] == category) & (df["brand"] == brand)]
     return filtered_df
 
 # ARIMA time series forecasting
@@ -34,9 +28,18 @@ def arima_forecast(data, order):
     return forecast[0]
 
 # ABC analysis algorithm using ARIMA time series forecasting
-def abc_analysis(sales_data, product_name, category, brand, month_name):
-    data = get_sales_data(sales_data, product_name, category, brand, month_name)
-    total_sales_in_month = data["sale"].sum()
+def abc_analysis(sales_data, product_name, category, month, unique_brands, brand=None):
+    current_year = datetime.now().year
+    next_month = datetime.strptime(month, "%b").replace(year=current_year) + timedelta(days=31)
+    next_month_name = next_month.strftime("%b").lower()
+
+    if brand:
+        data = get_sales_data(sales_data, product_name, category, brand, next_month_name)
+    else:
+        # If brand is not provided, analyze sales data for all brands
+        data = pd.concat([get_sales_data(sales_data, product_name, category, b, next_month_name) for b in unique_brands])
+
+    total_sales = data["sale"].sum()
 
     # Sort the data by sale value in descending order
     sorted_data = data.sort_values(by="sale", ascending=False)
@@ -52,14 +55,15 @@ def abc_analysis(sales_data, product_name, category, brand, month_name):
     predicted_stock_quantity = arima_forecast(time_series_data, order)
 
     # Determine the category based on the predicted stock quantity
-    if predicted_stock_quantity >= total_sales_in_month * 0.6:
+    if predicted_stock_quantity >= total_sales * 0.6:
         category_prediction = "A"
-    elif predicted_stock_quantity >= total_sales_in_month * 0.3:
+    elif predicted_stock_quantity >= total_sales * 0.3:
         category_prediction = "B"
     else:
         category_prediction = "C"
 
     return predicted_stock_quantity, category_prediction
+
 
 @app.route("/predict_stock", methods=["POST"])
 def predict_stock():
@@ -67,21 +71,23 @@ def predict_stock():
         data = request.get_json()
         product_name = data["product"]
         category = data["category"]
-        month_name = data["month"]
+        month = data["month"]
 
         sales_data = load_sales_data()
-        unique_brands = {item["brand"] for year_data in sales_data.values() for month_data in year_data.values() for item in month_data}
+        unique_brands = {item["brand"] for month_data in sales_data.values() for item in month_data}
+
         print("Received data:", data)
         print("Unique brands:", unique_brands)
+        print("Keys available in sales_data dictionary:", sales_data.keys())  # Debug print
 
         prediction_results = []
         for brand in unique_brands:
-            predicted_stock_quantity, category_prediction = abc_analysis(sales_data, product_name, category, brand, month_name)
+            predicted_stock_quantity, category_prediction = abc_analysis(sales_data, product_name, category, month, unique_brands, brand=brand)
             result = {
                 "brand": brand,
                 "product": product_name,
                 "category": category,
-                "month": month_name,
+                "month": month,
                 "predictedStock": predicted_stock_quantity,
                 "predictedCategory": category_prediction
             }
