@@ -18,6 +18,10 @@ def abc_analysis_prediction():
     category = data.get("category")
     month = data.get("month")
 
+    print(f"Product Name: {product_name}")
+    print(f"Category: {category}")
+    print(f"Month: {month}")
+
     # Filter sales data based on product name, category, and month
     selected_data = []
     for year, months_data in sales_data.items():
