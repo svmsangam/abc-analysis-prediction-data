@@ -9,6 +9,7 @@ app = Flask(__name__)
 with open("sales_history_dataset.json", "r") as json_file:
     sales_data = json.load(json_file)
 
+
 # Implement the API endpoint for ABC analysis prediction using ARIMA time series
 @app.route("/abc_analysis_prediction", methods=["POST"])
 def abc_analysis_prediction():
@@ -17,10 +18,6 @@ def abc_analysis_prediction():
     product_name = data.get("productName")
     category = data.get("category")
     month = data.get("month")
-
-    print(f"Product Name: {product_name}")
-    print(f"Category: {category}")
-    print(f"Month: {month}")
 
     # Filter sales data based on product name, category, and month
     selected_data = []
@@ -34,27 +31,35 @@ def abc_analysis_prediction():
                     selected_data.append(sale_data)
 
     if not selected_data:
-        return jsonify({"error": "No sales history data found for the provided product."})
+        return jsonify({"error": "No data found for the provided parameters."})
 
     # Prepare data for ARIMA time series forecasting
     df = pd.DataFrame(selected_data)
     df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y-%b")
     df.set_index("timestamp", inplace=True)
 
-    # Perform ARIMA forecasting (You will need to tune the model based on your data)
-    # Example ARIMA model fitting:
-    model = sm.tsa.ARIMA(df["unitSold"], order=(1, 1, 1))
-    results = model.fit()
+    # Create an empty dictionary to store revenue for each brand
+    brand_revenues = {}
 
-    # Forecast the quantity required to be in stock for each brand
-    forecast_steps = 1  # Forecast for one step (next month)
-    forecast = results.forecast(steps=forecast_steps)
+    # Group data by brand and perform ARIMA forecasting for each brand
+    for brand, brand_data in df.groupby("brand"):
+        # Perform ARIMA forecasting (You will need to tune the model based on your data)
+        # Example ARIMA model fitting:
+        model = sm.tsa.ARIMA(brand_data["unitSold"], order=(1, 1, 1))
+        results = model.fit()
 
-    # Prepare the response
-    brand_predictions = df.groupby("brand")["unitSold"].sum() * forecast.iloc[0]
-    result = {brand: int(brand_predictions[brand]) for brand in brand_predictions.index}
+        # Forecast the quantity required to be in stock for the brand
+        forecast_steps = 1  # Forecast for one step (next month)
+        forecast = results.forecast(steps=forecast_steps)
 
-    return jsonify(result)
+        # Calculate total revenue for the brand by multiplying forecasted quantity with the product price
+        total_revenue = (brand_data["unitPrice"] * forecast.iloc[0]).sum()
+
+        # Store the revenue in the dictionary with the brand as the key
+        brand_revenues[brand] = total_revenue
+
+    return jsonify(brand_revenues)
+
 
 if __name__ == "__main__":
     app.run(debug=True)

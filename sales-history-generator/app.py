@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Function to generate random sales data
 def generate_sales_data():
-    products = ["shoes", "t-shirts", "jeans", "watches", "bags"]
+    products = ["shoes", "t-shirts", "jeans", "watches", "bags","socks"]
     categories = ["male", "female", "unisex"]
     brands = ["adidas", "nike", "puma", "reebok", "vans"]
     unit_price_min, unit_price_max = 50.0, 500.0
